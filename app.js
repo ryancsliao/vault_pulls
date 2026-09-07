@@ -7,17 +7,29 @@
  * 5000-card pool is shared and tamper-proof across all customers.
  */
 
-const STORAGE_KEY = "vault-pulls-state-v1";
+const STORAGE_KEY = "vault-pulls-state-v2";
 const STARTING_BALANCE = 1000; // demo play-money balance
 
+// Every price point buys exactly one pull. What changes is the rarity
+// floor that pull is guaranteed to meet — pay more, pull from a smaller,
+// better pool.
+const RARITY_ORDER = ["Common", "Rare", "Epic", "Legendary"];
+
 const TIERS = [
-  { id: "small", price: 50, pulls: 1, label: "Single Pull" },
-  { id: "medium", price: 100, pulls: 3, label: "Triple Pull" },
-  { id: "large", price: 500, pulls: 20, label: "Mega Pull (20 cards)", featured: true },
+  { id: "small", price: 50, label: "Single Pull", minRarity: "Common", tagline: "Standard odds" },
+  { id: "medium", price: 100, label: "Rare+ Pull", minRarity: "Rare", tagline: "Guaranteed Rare or better" },
+  {
+    id: "large",
+    price: 500,
+    label: "Epic+ Pull",
+    minRarity: "Epic",
+    tagline: "Guaranteed Epic or better",
+    featured: true,
+  },
 ];
 
-// Weighted odds per pull, independent of how many are actually left of
-// each rarity (falls back to the next-best tier if a rarity sells out).
+// Baseline weighted odds across the whole vault (before any tier's
+// rarity-floor guarantee is applied).
 const PULL_WEIGHTS = { Common: 70, Rare: 25, Epic: 4, Legendary: 1 };
 
 const INVENTORY_PAGE_SIZE = 250;
@@ -65,10 +77,13 @@ function remainingByRarity() {
   return buckets;
 }
 
-function weightedRarityOrder() {
+function weightedRarityOrder(allowedRarities) {
   // Shuffle-ish deterministic-by-random order of rarities weighted by
-  // PULL_WEIGHTS, so if the first choice is sold out we fall back sanely.
-  const entries = Object.entries(PULL_WEIGHTS);
+  // PULL_WEIGHTS, restricted to `allowedRarities`, so if the first choice
+  // is sold out we fall back sanely to the next-best allowed rarity.
+  const entries = Object.entries(PULL_WEIGHTS).filter(([rarity]) =>
+    allowedRarities.includes(rarity)
+  );
   const total = entries.reduce((sum, [, w]) => sum + w, 0);
   let roll = Math.random() * total;
   let chosen = entries[entries.length - 1][0];
@@ -83,8 +98,8 @@ function weightedRarityOrder() {
   return [chosen, ...rest];
 }
 
-function pullOneCard(buckets) {
-  for (const rarity of weightedRarityOrder()) {
+function pullOneCard(buckets, allowedRarities) {
+  for (const rarity of weightedRarityOrder(allowedRarities)) {
     const pool = buckets[rarity];
     if (pool.length > 0) {
       const idx = Math.floor(Math.random() * pool.length);
@@ -92,7 +107,7 @@ function pullOneCard(buckets) {
       return card;
     }
   }
-  return null; // whole vault is empty
+  return null; // nothing left among the allowed rarities
 }
 
 function openPack(tier) {
@@ -101,22 +116,24 @@ function openPack(tier) {
     return;
   }
 
-  const buckets = remainingByRarity();
-  const remainingTotal = window.TOTAL_CARDS - pulledSet.size;
-  if (remainingTotal <= 0) {
+  if (pulledSet.size >= window.TOTAL_CARDS) {
     showToast("The vault is empty — every card has been pulled!");
     return;
   }
 
-  const pullCount = Math.min(tier.pulls, remainingTotal);
-  const pulled = [];
-  for (let i = 0; i < pullCount; i++) {
-    const card = pullOneCard(buckets);
-    if (!card) break;
-    pulled.push(card);
-    pulledSet.add(card.id);
+  const buckets = remainingByRarity();
+  const guaranteedRarities = RARITY_ORDER.slice(RARITY_ORDER.indexOf(tier.minRarity));
+
+  let card = pullOneCard(buckets, guaranteedRarities);
+  let guaranteeMissed = false;
+  if (!card) {
+    // Nothing left at or above the guaranteed rarity — pull from
+    // whatever's left in the vault instead of refusing the sale.
+    card = pullOneCard(buckets, RARITY_ORDER);
+    guaranteeMissed = true;
   }
 
+  pulledSet.add(card.id);
   state.balance -= tier.price;
   state.pulledIds = Array.from(pulledSet);
   saveState();
@@ -125,7 +142,7 @@ function openPack(tier) {
   renderCollection();
   renderInventoryReset();
   refreshBuyButtonsDisabled();
-  showReveal(pulled, pullCount < tier.pulls);
+  showReveal(card, tier, guaranteeMissed);
 }
 
 // ---------------------------------------------------------------------
@@ -165,11 +182,10 @@ function renderTiers() {
   for (const tier of TIERS) {
     const card = document.createElement("div");
     card.className = "tier-card" + (tier.featured ? " featured" : "");
-    const perCard = (tier.price / tier.pulls).toFixed(2);
     card.innerHTML = `
       <div class="tier-name">${tier.label}</div>
       <div class="tier-price">$${tier.price}</div>
-      <div class="tier-pulls">${tier.pulls} card${tier.pulls > 1 ? "s" : ""} · $${perCard}/card</div>
+      <div class="tier-pulls">1 card · ${tier.tagline}</div>
       <button class="tier-buy" data-tier="${tier.id}">Open Pack</button>
     `;
     el.appendChild(card);
@@ -289,35 +305,28 @@ function jumpToCard(id) {
 // Reveal modal + toast
 // ---------------------------------------------------------------------
 
-function showReveal(pulledCards, wasCutShort) {
+function showReveal(card, tier, guaranteeMissed) {
   const overlay = document.getElementById("reveal-overlay");
   const grid = document.getElementById("reveal-grid");
   const title = document.getElementById("reveal-title");
 
-  title.textContent =
-    pulledCards.length === 0
-      ? "The vault is empty!"
-      : `You pulled ${pulledCards.length} card${pulledCards.length > 1 ? "s" : ""}!`;
+  title.textContent = "You pulled a card!";
 
-  grid.innerHTML = pulledCards
-    .map(
-      (card, i) => `
-      <div class="reveal-card" style="background:${card.glow}; border-color:${card.color}; animation-delay:${i * 0.08}s;">
-        <div class="rc-id">#${String(card.id).padStart(4, "0")}</div>
-        <div class="rc-name">${card.name}</div>
-        <div class="rc-rarity" style="color:${card.color}">${card.rarity}</div>
-      </div>
-    `
-    )
-    .join("");
+  grid.innerHTML = `
+    <div class="reveal-card" style="background:${card.glow}; border-color:${card.color};">
+      <div class="rc-id">#${String(card.id).padStart(4, "0")}</div>
+      <div class="rc-name">${card.name}</div>
+      <div class="rc-rarity" style="color:${card.color}">${card.rarity}</div>
+    </div>
+  `;
 
-  if (wasCutShort) {
+  if (guaranteeMissed) {
     grid.insertAdjacentHTML(
       "beforeend",
       `<div style="align-self:center;color:var(--text-dim);font-size:0.8rem;">
-        The vault ran out of cards partway through this pack, so fewer
-        cards than paid for were delivered. (This demo doesn't implement
-        partial refunds.)
+        The vault had no ${tier.minRarity}+ cards left to honor the
+        ${tier.label} guarantee, so this pull came from the remaining
+        pool instead.
       </div>`
     );
   }
