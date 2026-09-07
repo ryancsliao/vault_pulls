@@ -203,9 +203,26 @@ function refreshBuyButtonsDisabled() {
   const soldOut = pulledSet.size >= window.TOTAL_CARDS;
   document.querySelectorAll(".tier-buy").forEach((btn) => {
     const tier = TIERS.find((t) => t.id === btn.dataset.tier);
-    btn.disabled = soldOut || state.balance < tier.price;
-    btn.textContent = soldOut ? "Sold Out" : "Open Pack";
+    const canAfford = state.balance >= tier.price;
+    btn.disabled = soldOut || !canAfford;
+    btn.textContent = soldOut ? "Sold Out" : canAfford ? "Open Pack" : "Insufficient Balance";
   });
+}
+
+// Demo-only: this is play money, so give players a way to keep testing
+// once they've spent it down instead of getting stuck with every button
+// permanently grayed out.
+function resetDemo() {
+  state.balance = STARTING_BALANCE;
+  state.pulledIds = [];
+  pulledSet.clear();
+  saveState();
+
+  renderTopbar();
+  renderCollection();
+  renderInventoryReset();
+  refreshBuyButtonsDisabled();
+  showToast(`Demo reset — balance refilled to $${STARTING_BALANCE.toLocaleString()} and the vault restocked.`);
 }
 
 // ---------------------------------------------------------------------
@@ -364,6 +381,8 @@ document.getElementById("reveal-overlay").addEventListener("click", (e) => {
 });
 
 document.getElementById("load-more-btn").addEventListener("click", renderInventoryPage);
+
+document.getElementById("reset-demo-btn").addEventListener("click", resetDemo);
 
 document.getElementById("inventory-search").addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
