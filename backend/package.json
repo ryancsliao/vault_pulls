@@ -1,0 +1,10 @@
+{
+  "name": "vault-pulls-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Authoritative 5000-card inventory service for the Vault Pulls demo.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

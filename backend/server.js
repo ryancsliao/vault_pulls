@@ -1,0 +1,264 @@
+/**
+ * Vault Pulls backend — the authoritative 5000-card inventory.
+ *
+ * Zero dependencies on purpose (just Node's built-in http/fs) so the demo
+ * runs with nothing but `node server.js`. The frontend never holds the
+ * full 5000-card list; it only ever sees a small preview slice, single
+ * card lookups, and the outcome of its own pulls. This file is the only
+ * place a card is ever marked pulled.
+ */
+
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const {
+  TOTAL_CARDS,
+  RARITY_ORDER,
+  buildInventory,
+} = require("./inventory");
+
+const PORT = process.env.PORT || 4000;
+const DATA_DIR = path.join(__dirname, "data");
+const DATA_FILE = path.join(DATA_DIR, "inventory-state.json");
+
+// Every price point buys exactly one pull; higher tiers guarantee a
+// better rarity floor instead of more cards.
+const TIERS = [
+  { id: "small", price: 50, label: "Single Pull", minRarity: "Common", tagline: "Standard odds" },
+  { id: "medium", price: 100, label: "Rare+ Pull", minRarity: "Rare", tagline: "Guaranteed Rare or better" },
+  {
+    id: "large",
+    price: 500,
+    label: "Epic+ Pull",
+    minRarity: "Epic",
+    tagline: "Guaranteed Epic or better",
+    featured: true,
+  },
+];
+
+const PULL_WEIGHTS = { Common: 70, Rare: 25, Epic: 4, Legendary: 1 };
+
+// The frontend's "Card Preview" section shows only this fixed slice of
+// the vault (8 ids from each rarity band) — never the full 5000.
+const PREVIEW_IDS = buildPreviewIds();
+function buildPreviewIds() {
+  const bands = [
+    { from: 4951, to: 5000 }, // Legendary
+    { from: 4801, to: 4950 }, // Epic
+    { from: 4001, to: 4800 }, // Rare
+    { from: 1, to: 4000 }, // Common
+  ];
+  const ids = [];
+  for (const band of bands) {
+    for (let i = 0; i < 8; i++) ids.push(band.from + i);
+  }
+  return ids;
+}
+
+// ---------------------------------------------------------------------
+// State: the full inventory, persisted to disk so a restart doesn't
+// silently restock the vault.
+// ---------------------------------------------------------------------
+
+let inventory = loadState();
+let recentPulls = []; // most-recent-first, capped
+
+function loadState() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+      if (Array.isArray(raw) && raw.length === TOTAL_CARDS) return raw;
+    }
+  } catch (err) {
+    console.warn("Could not read saved inventory state, starting fresh.", err.message);
+  }
+  return buildInventory();
+}
+
+function saveState() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(DATA_FILE, JSON.stringify(inventory));
+}
+
+function resetInventory() {
+  inventory = buildInventory();
+  recentPulls = [];
+  saveState();
+}
+
+// ---------------------------------------------------------------------
+// Pull logic
+// ---------------------------------------------------------------------
+
+function remainingByRarity() {
+  const buckets = { Common: [], Rare: [], Epic: [], Legendary: [] };
+  for (const card of inventory) if (!card.pulled) buckets[card.rarity].push(card);
+  return buckets;
+}
+
+function weightedRarityOrder(allowedRarities) {
+  const entries = Object.entries(PULL_WEIGHTS).filter(([rarity]) => allowedRarities.includes(rarity));
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  let roll = Math.random() * total;
+  let chosen = entries[entries.length - 1][0];
+  for (const [rarity, weight] of entries) {
+    if (roll < weight) {
+      chosen = rarity;
+      break;
+    }
+    roll -= weight;
+  }
+  return [chosen, ...entries.map(([r]) => r).filter((r) => r !== chosen)];
+}
+
+function pullOneCard(buckets, allowedRarities) {
+  for (const rarity of weightedRarityOrder(allowedRarities)) {
+    const pool = buckets[rarity];
+    if (pool.length > 0) {
+      const idx = Math.floor(Math.random() * pool.length);
+      return pool[idx]; // reference into `inventory` — mutate in place
+    }
+  }
+  return null; // nothing left among the allowed rarities
+}
+
+function pulledCount() {
+  return inventory.filter((c) => c.pulled).length;
+}
+
+function statsPayload() {
+  const buckets = remainingByRarity();
+  return {
+    total: TOTAL_CARDS,
+    pulledCount: pulledCount(),
+    remaining: TOTAL_CARDS - pulledCount(),
+    remainingByRarity: {
+      Common: buckets.Common.length,
+      Rare: buckets.Rare.length,
+      Epic: buckets.Epic.length,
+      Legendary: buckets.Legendary.length,
+    },
+    pullWeights: PULL_WEIGHTS,
+    tiers: TIERS,
+  };
+}
+
+// ---------------------------------------------------------------------
+// Tiny HTTP layer (no framework)
+// ---------------------------------------------------------------------
+
+function sendJSON(res, status, data) {
+  const body = JSON.stringify(data);
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(body);
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      if (!raw) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+    return res.end();
+  }
+
+  try {
+    if (req.method === "GET" && url.pathname === "/api/stats") {
+      return sendJSON(res, 200, statsPayload());
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/preview") {
+      const cards = PREVIEW_IDS.map((id) => inventory[id - 1]);
+      return sendJSON(res, 200, { cards });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/recent-pulls") {
+      const limit = Math.min(Number(url.searchParams.get("limit")) || 10, 50);
+      return sendJSON(res, 200, { pulls: recentPulls.slice(0, limit) });
+    }
+
+    const cardMatch = url.pathname.match(/^\/api\/card\/(\d+)$/);
+    if (req.method === "GET" && cardMatch) {
+      const id = Number(cardMatch[1]);
+      if (!Number.isInteger(id) || id < 1 || id > TOTAL_CARDS) {
+        return sendJSON(res, 400, { error: `Card id must be between 1 and ${TOTAL_CARDS}.` });
+      }
+      return sendJSON(res, 200, { card: inventory[id - 1] });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/pull") {
+      const body = await readBody(req).catch(() => null);
+      if (body === null) return sendJSON(res, 400, { error: "Invalid JSON body." });
+
+      const tier = TIERS.find((t) => t.id === body.tierId);
+      if (!tier) return sendJSON(res, 400, { error: "Unknown pack tier." });
+
+      if (pulledCount() >= TOTAL_CARDS) {
+        return sendJSON(res, 409, { error: "The vault is empty — every card has been pulled." });
+      }
+
+      const buckets = remainingByRarity();
+      const guaranteedRarities = RARITY_ORDER.slice(RARITY_ORDER.indexOf(tier.minRarity));
+
+      let card = pullOneCard(buckets, guaranteedRarities);
+      let guaranteeMissed = false;
+      if (!card) {
+        // Nothing left at/above the guarantee — pull from whatever
+        // remains rather than refusing the sale.
+        card = pullOneCard(buckets, RARITY_ORDER);
+        guaranteeMissed = true;
+      }
+      if (!card) {
+        return sendJSON(res, 409, { error: "The vault is empty — every card has been pulled." });
+      }
+
+      card.pulled = true;
+      card.pulledAt = new Date().toISOString();
+      saveState();
+
+      recentPulls.unshift({ id: card.id, name: card.name, rarity: card.rarity, tierId: tier.id, pulledAt: card.pulledAt });
+      recentPulls = recentPulls.slice(0, 50);
+
+      return sendJSON(res, 200, { card, tier, guaranteeMissed, stats: statsPayload() });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/reset") {
+      // Demo-only convenience: restock the whole vault. A real inventory
+      // service would never expose this.
+      resetInventory();
+      return sendJSON(res, 200, { ok: true, stats: statsPayload() });
+    }
+
+    return sendJSON(res, 404, { error: "Not found" });
+  } catch (err) {
+    console.error(err);
+    return sendJSON(res, 500, { error: "Internal server error" });
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`Vault Pulls backend listening on http://localhost:${PORT}`);
+  console.log(`Inventory: ${TOTAL_CARDS - pulledCount()} / ${TOTAL_CARDS} cards remaining`);
+});

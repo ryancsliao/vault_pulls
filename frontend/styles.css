@@ -502,3 +502,125 @@ footer {
   font-size: 0.78rem;
   padding: 30px 24px 50px;
 }
+
+/* ---------- Backend connection banner ---------- */
+
+.banner {
+  background: rgba(248, 113, 113, 0.12);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+  text-align: center;
+  padding: 10px 20px;
+  font-size: 0.85rem;
+}
+
+.banner code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.82em;
+}
+
+/* ---------- Preview section note ---------- */
+
+.preview-note {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  max-width: 70ch;
+  margin: -8px 0 20px;
+}
+
+/* ---------- Card lookup ---------- */
+
+.lookup-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.lookup-row input {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 9px 12px;
+  border-radius: 8px;
+  width: 200px;
+  font-size: 0.9rem;
+}
+
+#lookup-result:empty {
+  display: none;
+}
+
+.lookup-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.lookup-card .mini-card {
+  width: 110px;
+  flex: none;
+}
+
+.lookup-status {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.lookup-status.status-pulled {
+  color: var(--danger);
+}
+
+.lookup-status.status-available {
+  color: var(--success);
+}
+
+.lookup-error {
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.lookup-pending {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+/* ---------- Vault activity feed ---------- */
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+}
+
+.activity-id {
+  font-weight: 700;
+}
+
+.activity-rarity {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.activity-time {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
