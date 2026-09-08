@@ -22,6 +22,13 @@ function rarityForId(id) {
   return RARITY_RANGES.find((r) => id >= r.min && id <= r.max).name;
 }
 
+/** How many of the 5000 cards belong to each rarity, e.g. { Common: 4000, ... } */
+function totalByRarity() {
+  const totals = {};
+  for (const r of RARITY_RANGES) totals[r.name] = r.max - r.min + 1;
+  return totals;
+}
+
 /** Fresh inventory: all 5000 cards, none pulled yet. */
 function buildInventory() {
   const inventory = new Array(TOTAL_CARDS);
@@ -44,4 +51,5 @@ module.exports = {
   buildInventory,
   padId,
   rarityForId,
+  totalByRarity,
 };

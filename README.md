@@ -19,16 +19,22 @@ Two processes, in two terminals:
 
 ```bash
 # Terminal 1 — the inventory backend (http://localhost:4000)
-cd card-pulling-site/backend
+cd backend
 npm start
 
 # Terminal 2 — the frontend (http://localhost:8080)
-cd card-pulling-site/frontend
+cd frontend
 python3 -m http.server 8080
 ```
 
 Then open http://localhost:8080. If the frontend can't reach the
 backend, it shows a banner telling you so instead of failing silently.
+
+Want to look at the backend directly instead of the storefront? Open
+http://localhost:4000/dashboard — a live table + bar-chart view of the
+inventory (remaining by rarity, recent pulls, tier config), re-rendered
+on every request and auto-refreshing every 5 seconds. Raw JSON is still
+available at the `/api/*` routes below if you'd rather script against it.
 
 Running the backend on a different host/port? Set `window.VAULT_API_BASE`
 before `app.js` loads, e.g. add this above the `<script src="app.js">`
@@ -66,6 +72,7 @@ can't guarantee that (two tabs, two different "vaults"). So:
 
 | Method | Path | Description |
 |---|---|---|
+| GET | `/dashboard` (also `/`) | Human-readable HTML dashboard: stat tiles, a rarity bar chart, and tables of recent pulls + tiers |
 | GET | `/api/stats` | Totals, remaining-by-rarity, pull odds, and tier config |
 | GET | `/api/preview` | The fixed 32-card preview sample, with current `pulled` status |
 | GET | `/api/card/:id` | A single card's status (`id` 1–5000) |

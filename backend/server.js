@@ -15,7 +15,9 @@ const {
   TOTAL_CARDS,
   RARITY_ORDER,
   buildInventory,
+  totalByRarity,
 } = require("./inventory");
+const { renderDashboard } = require("./dashboard");
 
 const PORT = process.env.PORT || 4000;
 const DATA_DIR = path.join(__dirname, "data");
@@ -138,6 +140,7 @@ function statsPayload() {
       Epic: buckets.Epic.length,
       Legendary: buckets.Legendary.length,
     },
+    totalByRarity: totalByRarity(),
     pullWeights: PULL_WEIGHTS,
     tiers: TIERS,
   };
@@ -154,6 +157,11 @@ function sendJSON(res, status, data) {
     "Access-Control-Allow-Origin": "*",
   });
   res.end(body);
+}
+
+function sendHTML(res, status, html) {
+  res.writeHead(status, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(html);
 }
 
 function readBody(req) {
@@ -185,6 +193,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
+    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/dashboard")) {
+      const html = renderDashboard({
+        stats: statsPayload(),
+        recentPulls,
+        generatedAt: new Date().toLocaleString(),
+      });
+      return sendHTML(res, 200, html);
+    }
+
     if (req.method === "GET" && url.pathname === "/api/stats") {
       return sendJSON(res, 200, statsPayload());
     }
@@ -260,5 +277,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Vault Pulls backend listening on http://localhost:${PORT}`);
+  console.log(`Dashboard: http://localhost:${PORT}/dashboard`);
   console.log(`Inventory: ${TOTAL_CARDS - pulledCount()} / ${TOTAL_CARDS} cards remaining`);
 });
