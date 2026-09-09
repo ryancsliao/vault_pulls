@@ -129,6 +129,26 @@ it. It's included on every card the API returns (`/api/preview`,
 `/api/card/:id`, `/api/pull`, and each `/api/recent-pulls` entry) and
 shown throughout the frontend and the `/dashboard` page.
 
+#### Premium cards (above the rarity average)
+
+A fixed subset within Common, Rare, and Epic prices *above* their
+rarity's average instead — the lowest-numbered `count` ids in that
+rarity's band, at 115% of the pack tier for that rarity
+(`PREMIUM_RULES` in `server.js`):
+
+| Rarity | Premium count | Which ids | Price |
+|---|---|---|---|
+| Common | 1,000 of 4,000 | `#0001–#1000` | $57.50 |
+| Rare | 120 of 800 | `#4001–#4120` | $115.00 |
+| Epic | 22 of 150 | `#4801–#4822` | $575.00 |
+
+Legendary has no premium subset — every Legendary card prices the same.
+A card's response carries `isPremium: true/false` alongside
+`averagePrice` so the frontend can mark it (shown as a "★" next to the
+price). The Card Preview sample deliberately mixes premium and
+non-premium ids within each of those three rarities, so the preview
+doesn't make it look like every card of a rarity is premium-priced.
+
 ## Known limitations (this is a demo, not production)
 
 - **In-memory + single JSON file** — fine for a demo, not a real

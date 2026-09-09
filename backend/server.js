@@ -14,6 +14,7 @@ const path = require("path");
 const {
   TOTAL_CARDS,
   RARITY_ORDER,
+  RARITY_RANGES,
   buildInventory,
   totalByRarity,
 } = require("./inventory");
@@ -40,6 +41,11 @@ const TIERS = [
 
 const PULL_WEIGHTS = { Common: 70, Rare: 25, Epic: 4, Legendary: 1 };
 
+/** Round to the nearest cent — plain multiplication can land on e.g. 57.49999999999999. */
+function roundMoney(amount) {
+  return Math.round(amount * 100) / 100;
+}
+
 // Average market value per rarity, derived from pack pricing rather than
 // hand-typed numbers. Common/Rare/Epic price at 65% of the tier that
 // guarantees them; Legendary has no dedicated tier (it only ever shows
@@ -49,31 +55,67 @@ const RARITY_AVERAGE_PRICE = buildRarityAveragePrice();
 function buildRarityAveragePrice() {
   const priceOf = (tierId) => TIERS.find((t) => t.id === tierId).price;
   return {
-    Common: priceOf("small") * 0.65,
-    Rare: priceOf("medium") * 0.65,
-    Epic: priceOf("large") * 0.65,
-    Legendary: priceOf("large") * 1.25,
+    Common: roundMoney(priceOf("small") * 0.65),
+    Rare: roundMoney(priceOf("medium") * 0.65),
+    Epic: roundMoney(priceOf("large") * 0.65),
+    Legendary: roundMoney(priceOf("large") * 1.25),
   };
 }
 
-/** Attach the rarity's average price to a card for API/dashboard output. */
+// A subset of cards within a rarity price above that rarity's average —
+// "premium" cards, at 115% of the pack tier that guarantees their
+// rarity. They're the lowest-numbered `count` ids in that rarity's band
+// (same "first N of the band" convention PREVIEW_IDS below uses), so
+// which cards are premium is fixed and reproducible rather than random.
+const PREMIUM_RULES = [
+  { rarity: "Common", tierId: "small", count: 1000 },
+  { rarity: "Rare", tierId: "medium", count: 120 },
+  { rarity: "Epic", tierId: "large", count: 22 },
+];
+const PREMIUM_PRICE_BY_ID = buildPremiumPriceById();
+function buildPremiumPriceById() {
+  const priceOf = (tierId) => TIERS.find((t) => t.id === tierId).price;
+  const byId = new Map();
+  for (const rule of PREMIUM_RULES) {
+    const band = RARITY_RANGES.find((r) => r.name === rule.rarity);
+    const price = roundMoney(priceOf(rule.tierId) * 1.15);
+    for (let id = band.min; id < band.min + rule.count; id++) {
+      byId.set(id, price);
+    }
+  }
+  return byId;
+}
+
+/** Attach this card's price to it: premium override if it has one, else its rarity's average. */
 function withAveragePrice(card) {
-  return { ...card, averagePrice: RARITY_AVERAGE_PRICE[card.rarity] };
+  const price = PREMIUM_PRICE_BY_ID.has(card.id)
+    ? PREMIUM_PRICE_BY_ID.get(card.id)
+    : RARITY_AVERAGE_PRICE[card.rarity];
+  return { ...card, averagePrice: price, isPremium: PREMIUM_PRICE_BY_ID.has(card.id) };
 }
 
 // The frontend's "Card Preview" section shows only this fixed slice of
-// the vault (8 ids from each rarity band) — never the full 5000.
+// the vault (8 ids from each rarity band) — never the full 5000. For a
+// rarity with a premium subset, half the sample comes from inside that
+// subset and half from just past it, so the preview doesn't imply every
+// card of that rarity is premium-priced.
 const PREVIEW_IDS = buildPreviewIds();
 function buildPreviewIds() {
   const bands = [
-    { from: 4951, to: 5000 }, // Legendary
-    { from: 4801, to: 4950 }, // Epic
-    { from: 4001, to: 4800 }, // Rare
-    { from: 1, to: 4000 }, // Common
+    { name: "Legendary", from: 4951, to: 5000 },
+    { name: "Epic", from: 4801, to: 4950 },
+    { name: "Rare", from: 4001, to: 4800 },
+    { name: "Common", from: 1, to: 4000 },
   ];
   const ids = [];
   for (const band of bands) {
-    for (let i = 0; i < 8; i++) ids.push(band.from + i);
+    const premiumRule = PREMIUM_RULES.find((r) => r.rarity === band.name);
+    if (premiumRule) {
+      for (let i = 0; i < 4; i++) ids.push(band.from + i);
+      for (let i = 0; i < 4; i++) ids.push(band.from + premiumRule.count + i);
+    } else {
+      for (let i = 0; i < 8; i++) ids.push(band.from + i);
+    }
   }
   return ids;
 }
@@ -165,7 +207,18 @@ function statsPayload() {
     pullWeights: PULL_WEIGHTS,
     tiers: TIERS,
     rarityAveragePrice: RARITY_AVERAGE_PRICE,
+    premiumByRarity: premiumSummary(),
   };
+}
+
+/** { Common: { count: 1000, price: 57.5 }, ... } — for display, not lookup (use PREMIUM_PRICE_BY_ID for that). */
+function premiumSummary() {
+  const priceOf = (tierId) => TIERS.find((t) => t.id === tierId).price;
+  const summary = {};
+  for (const rule of PREMIUM_RULES) {
+    summary[rule.rarity] = { count: rule.count, price: roundMoney(priceOf(rule.tierId) * 1.15) };
+  }
+  return summary;
 }
 
 // ---------------------------------------------------------------------
@@ -277,17 +330,19 @@ const server = http.createServer(async (req, res) => {
       card.pulledAt = new Date().toISOString();
       saveState();
 
+      const pricedCard = withAveragePrice(card);
       recentPulls.unshift({
         id: card.id,
         name: card.name,
         rarity: card.rarity,
         tierId: tier.id,
         pulledAt: card.pulledAt,
-        averagePrice: RARITY_AVERAGE_PRICE[card.rarity],
+        averagePrice: pricedCard.averagePrice,
+        isPremium: pricedCard.isPremium,
       });
       recentPulls = recentPulls.slice(0, 50);
 
-      return sendJSON(res, 200, { card: withAveragePrice(card), tier, guaranteeMissed, stats: statsPayload() });
+      return sendJSON(res, 200, { card: pricedCard, tier, guaranteeMissed, stats: statsPayload() });
     }
 
     if (req.method === "POST" && url.pathname === "/api/reset") {

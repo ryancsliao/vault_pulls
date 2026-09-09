@@ -375,6 +375,10 @@ a {
   font-weight: 600;
 }
 
+.premium-star {
+  color: #f7c948;
+}
+
 /* ---------- Reveal modal ---------- */
 
 .modal-overlay {

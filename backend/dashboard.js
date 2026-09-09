@@ -61,7 +61,7 @@ function recentPullsRows(recentPulls) {
       <tr>
         <td class="mono">#${String(p.id).padStart(4, "0")}</td>
         <td><span class="chip" style="color:${RARITY_COLORS[p.rarity]}">${p.rarity}</span></td>
-        <td class="mono">${formatMoney(p.averagePrice)}</td>
+        <td class="mono">${formatMoney(p.averagePrice)}${p.isPremium ? ' <span class="star" title="Premium card">★</span>' : ""}</td>
         <td class="mono">${escapeHtml(p.tierId)}</td>
         <td class="mono dim">${formatTime(p.pulledAt)}</td>
       </tr>
@@ -82,6 +82,26 @@ function tierRows(tiers) {
       </tr>
     `
     )
+    .join("");
+}
+
+function premiumRows(premiumByRarity, totalByRarity) {
+  const rarities = Object.keys(premiumByRarity);
+  if (rarities.length === 0) {
+    return `<tr><td colspan="4" class="empty-cell">No premium cards configured.</td></tr>`;
+  }
+  return rarities
+    .map((rarity) => {
+      const { count, price } = premiumByRarity[rarity];
+      return `
+        <tr>
+          <td><span class="chip" style="color:${RARITY_COLORS[rarity]}">${rarity}</span></td>
+          <td class="mono">${count.toLocaleString()} / ${totalByRarity[rarity].toLocaleString()}</td>
+          <td class="mono">${formatMoney(price)}</td>
+          <td class="dim">115% of the pack tier for this rarity</td>
+        </tr>
+      `;
+    })
     .join("");
 }
 
@@ -151,6 +171,7 @@ function renderDashboard({ stats, recentPulls, generatedAt }) {
   tr:last-child td { border-bottom: none; }
   .empty-cell { color: var(--ink-faint); text-align: center; padding: 20px; }
   .chip { font-size: 0.78rem; font-weight: 600; }
+  .star { color: var(--brass); }
 
   footer { color: var(--ink-faint); font-size: 0.78rem; text-align: center; margin-top: 40px; }
 </style>
@@ -194,6 +215,21 @@ function renderDashboard({ stats, recentPulls, generatedAt }) {
         $500 tier instead.
       </p>
       ${bars}
+    </section>
+
+    <section>
+      <h2>Premium cards</h2>
+      <p class="section-note">
+        A fixed subset within each rarity prices above that rarity's
+        average — the lowest-numbered cards in the rarity's band, at
+        115% of the pack tier for that rarity.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Rarity</th><th>Premium / Total</th><th>Price</th><th>Basis</th></tr>
+        </thead>
+        <tbody>${premiumRows(stats.premiumByRarity, stats.totalByRarity)}</tbody>
+      </table>
     </section>
 
     <section>
