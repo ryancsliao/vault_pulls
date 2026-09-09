@@ -107,6 +107,28 @@ Base rarity odds (used by the $50 tier, and as the pool the higher tiers
 re-roll within): `Common 70% · Rare 25% · Epic 4% · Legendary 1%`, over
 rarity bands `1–4000` / `4001–4800` / `4801–4950` / `4951–5000`.
 
+### Card values
+
+Every card also carries an `averagePrice`, one flat value per rarity
+(not randomized per-card), derived from the pack prices above rather
+than typed in separately:
+
+| Rarity | Basis | Average price |
+|---|---|---|
+| Common | 65% of the $50 tier | $32.50 |
+| Rare | 65% of the $100 tier | $65.00 |
+| Epic | 65% of the $500 tier | $325.00 |
+| Legendary | 125% of the $500 tier | $625.00 |
+
+Legendary has no tier of its own — it only ever shows up as a bonus pull
+from the $500 Epic+ tier — so instead of a 65% discount it prices at
+125% of that top tier. This is computed once in the backend
+(`RARITY_AVERAGE_PRICE` in `server.js`) from the live `TIERS` config, not
+hand-typed, so changing a tier's price updates every card's value with
+it. It's included on every card the API returns (`/api/preview`,
+`/api/card/:id`, `/api/pull`, and each `/api/recent-pulls` entry) and
+shown throughout the frontend and the `/dashboard` page.
+
 ## Known limitations (this is a demo, not production)
 
 - **In-memory + single JSON file** — fine for a demo, not a real

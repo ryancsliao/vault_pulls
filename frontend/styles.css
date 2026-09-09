@@ -369,6 +369,12 @@ a {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.mini-card .mini-price {
+  font-size: 0.68rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ---------- Reveal modal ---------- */
 
 .modal-overlay {
@@ -448,6 +454,12 @@ a {
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
+}
+
+.reveal-card .rc-price {
+  font-size: 0.8rem;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .modal-actions {
@@ -617,6 +629,12 @@ footer {
   text-transform: uppercase;
   font-size: 0.7rem;
   letter-spacing: 0.05em;
+}
+
+.activity-price {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .activity-time {

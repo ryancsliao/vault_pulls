@@ -40,6 +40,27 @@ const TIERS = [
 
 const PULL_WEIGHTS = { Common: 70, Rare: 25, Epic: 4, Legendary: 1 };
 
+// Average market value per rarity, derived from pack pricing rather than
+// hand-typed numbers. Common/Rare/Epic price at 65% of the tier that
+// guarantees them; Legendary has no dedicated tier (it only ever shows
+// up as a bonus pull from the $500 Epic+ tier), so it prices instead at
+// 125% of that same top tier.
+const RARITY_AVERAGE_PRICE = buildRarityAveragePrice();
+function buildRarityAveragePrice() {
+  const priceOf = (tierId) => TIERS.find((t) => t.id === tierId).price;
+  return {
+    Common: priceOf("small") * 0.65,
+    Rare: priceOf("medium") * 0.65,
+    Epic: priceOf("large") * 0.65,
+    Legendary: priceOf("large") * 1.25,
+  };
+}
+
+/** Attach the rarity's average price to a card for API/dashboard output. */
+function withAveragePrice(card) {
+  return { ...card, averagePrice: RARITY_AVERAGE_PRICE[card.rarity] };
+}
+
 // The frontend's "Card Preview" section shows only this fixed slice of
 // the vault (8 ids from each rarity band) — never the full 5000.
 const PREVIEW_IDS = buildPreviewIds();
@@ -143,6 +164,7 @@ function statsPayload() {
     totalByRarity: totalByRarity(),
     pullWeights: PULL_WEIGHTS,
     tiers: TIERS,
+    rarityAveragePrice: RARITY_AVERAGE_PRICE,
   };
 }
 
@@ -207,7 +229,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/preview") {
-      const cards = PREVIEW_IDS.map((id) => inventory[id - 1]);
+      const cards = PREVIEW_IDS.map((id) => withAveragePrice(inventory[id - 1]));
       return sendJSON(res, 200, { cards });
     }
 
@@ -222,7 +244,7 @@ const server = http.createServer(async (req, res) => {
       if (!Number.isInteger(id) || id < 1 || id > TOTAL_CARDS) {
         return sendJSON(res, 400, { error: `Card id must be between 1 and ${TOTAL_CARDS}.` });
       }
-      return sendJSON(res, 200, { card: inventory[id - 1] });
+      return sendJSON(res, 200, { card: withAveragePrice(inventory[id - 1]) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/pull") {
@@ -255,10 +277,17 @@ const server = http.createServer(async (req, res) => {
       card.pulledAt = new Date().toISOString();
       saveState();
 
-      recentPulls.unshift({ id: card.id, name: card.name, rarity: card.rarity, tierId: tier.id, pulledAt: card.pulledAt });
+      recentPulls.unshift({
+        id: card.id,
+        name: card.name,
+        rarity: card.rarity,
+        tierId: tier.id,
+        pulledAt: card.pulledAt,
+        averagePrice: RARITY_AVERAGE_PRICE[card.rarity],
+      });
       recentPulls = recentPulls.slice(0, 50);
 
-      return sendJSON(res, 200, { card, tier, guaranteeMissed, stats: statsPayload() });
+      return sendJSON(res, 200, { card: withAveragePrice(card), tier, guaranteeMissed, stats: statsPayload() });
     }
 
     if (req.method === "POST" && url.pathname === "/api/reset") {

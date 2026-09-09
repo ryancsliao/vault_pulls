@@ -29,7 +29,11 @@ function formatTime(iso) {
   });
 }
 
-function barRow(rarity, remaining, total) {
+function formatMoney(amount) {
+  return `$${Number(amount).toFixed(2)}`;
+}
+
+function barRow(rarity, remaining, total, avgPrice) {
   const pulled = total - remaining;
   const pulledPct = total === 0 ? 0 : (pulled / total) * 100;
   const color = RARITY_COLORS[rarity];
@@ -42,13 +46,14 @@ function barRow(rarity, remaining, total) {
         <div class="bar-fill" style="width:${pulledPct.toFixed(1)}%; background:${color}"></div>
       </div>
       <div class="bar-figures">${remaining.toLocaleString()} / ${total.toLocaleString()} left</div>
+      <div class="bar-price">avg ${formatMoney(avgPrice)}</div>
     </div>
   `;
 }
 
 function recentPullsRows(recentPulls) {
   if (recentPulls.length === 0) {
-    return `<tr><td colspan="4" class="empty-cell">No pulls recorded yet.</td></tr>`;
+    return `<tr><td colspan="5" class="empty-cell">No pulls recorded yet.</td></tr>`;
   }
   return recentPulls
     .map(
@@ -56,6 +61,7 @@ function recentPullsRows(recentPulls) {
       <tr>
         <td class="mono">#${String(p.id).padStart(4, "0")}</td>
         <td><span class="chip" style="color:${RARITY_COLORS[p.rarity]}">${p.rarity}</span></td>
+        <td class="mono">${formatMoney(p.averagePrice)}</td>
         <td class="mono">${escapeHtml(p.tierId)}</td>
         <td class="mono dim">${formatTime(p.pulledAt)}</td>
       </tr>
@@ -83,7 +89,7 @@ function renderDashboard({ stats, recentPulls, generatedAt }) {
   const pulledPct = stats.total === 0 ? 0 : ((stats.pulledCount / stats.total) * 100).toFixed(1);
 
   const bars = RARITY_ORDER.map((rarity) =>
-    barRow(rarity, stats.remainingByRarity[rarity], stats.totalByRarity[rarity])
+    barRow(rarity, stats.remainingByRarity[rarity], stats.totalByRarity[rarity], stats.rarityAveragePrice[rarity])
   ).join("");
 
   return `<!doctype html>
@@ -129,13 +135,15 @@ function renderDashboard({ stats, recentPulls, generatedAt }) {
 
   section { margin-bottom: 36px; }
   h2 { font-size: 1.05rem; margin: 0 0 14px; }
+  .section-note { color: var(--ink-dim); font-size: 0.8rem; margin: -6px 0 16px; max-width: 62ch; }
 
-  .bar-row { display: grid; grid-template-columns: 110px 1fr 155px; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 155px 90px; align-items: center; gap: 12px; margin-bottom: 10px; }
   .bar-label { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
   .bar-track { background: var(--surface-raised); border: 1px solid var(--line); border-radius: 999px; height: 14px; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 999px 0 0 999px; }
   .bar-figures { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.78rem; color: var(--ink-dim); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bar-price { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.78rem; color: var(--brass); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   th, td { text-align: left; padding: 10px 14px; font-size: 0.85rem; border-bottom: 1px solid var(--line); }
@@ -179,6 +187,12 @@ function renderDashboard({ stats, recentPulls, generatedAt }) {
 
     <section>
       <h2>Inventory by rarity</h2>
+      <p class="section-note">
+        Avg value = 65% of the pack tier that guarantees each rarity
+        (Common → $50 tier, Rare → $100 tier, Epic → $500 tier);
+        Legendary has no tier of its own, so it prices at 125% of the
+        $500 tier instead.
+      </p>
       ${bars}
     </section>
 
@@ -186,7 +200,7 @@ function renderDashboard({ stats, recentPulls, generatedAt }) {
       <h2>Recent pulls</h2>
       <table>
         <thead>
-          <tr><th>Card</th><th>Rarity</th><th>Tier</th><th>Pulled at</th></tr>
+          <tr><th>Card</th><th>Rarity</th><th>Value</th><th>Tier</th><th>Pulled at</th></tr>
         </thead>
         <tbody>${recentPullsRows(recentPulls)}</tbody>
       </table>

@@ -21,6 +21,10 @@ const RARITY_COLOR = {
 const STORAGE_KEY = "vault-pulls-frontend-v1";
 const STARTING_BALANCE = 1000;
 
+function formatMoney(amount) {
+  return `$${Number(amount).toFixed(2)}`;
+}
+
 function loadLocalState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -197,6 +201,7 @@ function miniCardHTML(card) {
     <div class="mini-card" style="border-color:${color}; box-shadow: 0 0 0 1px ${color};">
       <div class="mini-id">#${String(card.id).padStart(4, "0")}</div>
       <div class="mini-rarity" style="color:${color}">${card.rarity}</div>
+      <div class="mini-price">${formatMoney(card.averagePrice)}</div>
     </div>
   `;
 }
@@ -233,6 +238,7 @@ function previewCardHTML(card) {
     <div class="mini-card" style="${style}">
       <div class="mini-id">#${String(card.id).padStart(4, "0")}</div>
       <div class="mini-rarity" style="color:${color}">${card.rarity}</div>
+      <div class="mini-price">${formatMoney(card.averagePrice)}</div>
       ${card.pulled ? '<div style="font-size:0.6rem;color:#f87171;">PULLED</div>' : ""}
     </div>
   `;
@@ -266,6 +272,7 @@ async function lookupCard(id) {
         <div class="mini-card" style="border-color:${color}; box-shadow: 0 0 0 1px ${color};">
           <div class="mini-id">#${String(card.id).padStart(4, "0")}</div>
           <div class="mini-rarity" style="color:${color}">${card.rarity}</div>
+          <div class="mini-price">${formatMoney(card.averagePrice)}</div>
         </div>
         <div class="lookup-status ${card.pulled ? "status-pulled" : "status-available"}">
           ${card.pulled ? `Already pulled${card.pulledAt ? " · " + new Date(card.pulledAt).toLocaleString() : ""}` : "Still in the vault"}
@@ -288,6 +295,7 @@ function activityItemHTML(entry) {
     <li class="activity-item">
       <span class="activity-id" style="color:${color}">#${String(entry.id).padStart(4, "0")}</span>
       <span class="activity-rarity" style="color:${color}">${entry.rarity}</span>
+      <span class="activity-price">${formatMoney(entry.averagePrice)}</span>
       <span class="activity-time">${when}</span>
     </li>
   `;
@@ -329,6 +337,7 @@ function showReveal(card, tier, guaranteeMissed) {
       <div class="rc-id">#${String(card.id).padStart(4, "0")}</div>
       <div class="rc-name">${card.name}</div>
       <div class="rc-rarity" style="color:${color}">${card.rarity}</div>
+      <div class="rc-price">${formatMoney(card.averagePrice)}</div>
     </div>
   `;
 
